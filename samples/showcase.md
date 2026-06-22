@@ -103,7 +103,7 @@ JSON:
 
 로컬 이미지는 kitty 그래픽 프로토콜로 표시됩니다:
 
-![데모 로고](rust-logo.png)
+![데모 로고](demo-image.png)
 
 원격 URL(`http`/`https`) 이미지도 다운로드해서 표시할 수 있습니다.
 

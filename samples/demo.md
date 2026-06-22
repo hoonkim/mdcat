@@ -23,4 +23,4 @@ fn main() {
 - List item 2
   - Nested item
 
-![logo](rust-logo.png)
+![logo](demo-image.png)
