@@ -7,6 +7,14 @@ use crate::image_kitty::transmit_and_place;
 
 pub const RESET: &str = "\x1b[0m";
 
+/// Left (and equal right) margin in columns. Content is drawn starting at
+/// column `LEFT_MARGIN + 1`; the layout width must be `cols - 2*LEFT_MARGIN`
+/// so the right edge keeps the same margin.
+pub const LEFT_MARGIN: u16 = 2;
+
+/// 1-based terminal column where content starts.
+const CONTENT_COL: u16 = LEFT_MARGIN + 1;
+
 pub fn sgr(style: &Style) -> String {
     let mut codes: Vec<String> = Vec::new();
     if style.bold { codes.push("1".into()); }
@@ -67,7 +75,7 @@ pub fn draw_viewport(out: &mut impl Write, doc: &Doc, scroll: usize, term: &Term
                     let grow = el_start + ri;
                     if grow < vstart || grow >= vend { continue; }
                     let srow = grow - vstart;
-                    write!(out, "\x1b[{};1H", srow + 1)?; // 1-based terminal row
+                    write!(out, "\x1b[{};{}H", srow + 1, CONTENT_COL)?; // 1-based row;col
                     write!(out, "{}", line_to_ansi(line))?;
                 }
             }
@@ -77,7 +85,7 @@ pub fn draw_viewport(out: &mut impl Write, doc: &Doc, scroll: usize, term: &Term
                     let per = height / lines.len().max(1);
                     for (li, text) in lines.iter().enumerate() {
                         let srow = (el_start - vstart) + li * per;
-                        write!(out, "\x1b[{};1H", srow + 1)?;
+                        write!(out, "\x1b[{};{}H", srow + 1, CONTENT_COL)?;
                         // Split into <=4096-byte chunks for osc66
                         for chunk in split_4096(text) {
                             write!(out, "{}", osc66(&chunk, sc))?;
@@ -93,7 +101,7 @@ pub fn draw_viewport(out: &mut impl Write, doc: &Doc, scroll: usize, term: &Term
                 let skip = (visible_top - el_start) as u16;
                 let show = (visible_bot - visible_top) as u16;
                 let srow = visible_top - vstart;
-                write!(out, "\x1b[{};1H", srow + 1)?;
+                write!(out, "\x1b[{};{}H", srow + 1, CONTENT_COL)?;
                 let crop = if skip == 0 && show == *rows { None } else { Some((skip, show)) };
                 let esc = transmit_and_place(data, *cols, *rows, crop, term.cell_px_h);
                 write!(out, "{}", esc)?;

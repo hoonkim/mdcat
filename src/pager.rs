@@ -55,7 +55,8 @@ fn build_doc<'a>(
     hl: &Highlighter,
     base_dir: &Path,
 ) -> document::Doc {
-    let width = (t.cols as usize).saturating_sub(4); // 2-col margins each side
+    // Symmetric left/right margins; render offsets content by LEFT_MARGIN.
+    let width = (t.cols as usize).saturating_sub(2 * crate::render::LEFT_MARGIN as usize);
     document::build(blocks, width, t, hl, base_dir)
 }
 
