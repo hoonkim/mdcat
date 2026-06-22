@@ -3,6 +3,7 @@ mod ir;
 mod layout;
 mod parser;
 mod style;
+mod term;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
