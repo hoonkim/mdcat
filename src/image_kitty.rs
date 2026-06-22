@@ -52,6 +52,37 @@ pub fn load(src: &str, base_dir: &Path) -> Option<ImageData> {
     })
 }
 
+/// Downscale (never upscale) the image to fit within `max_px_w` × `max_px_h`,
+/// preserving aspect ratio, returning RGBA. The viewer re-transmits the image
+/// every frame, so shrinking a huge source (e.g. a 4000px photo) to display
+/// resolution keeps scrolling responsive. Returns the input unchanged when it
+/// already fits or cannot be decoded.
+pub fn fit(img: ImageData, max_px_w: u32, max_px_h: u32) -> ImageData {
+    if max_px_w == 0 || max_px_h == 0 || (img.px_w <= max_px_w && img.px_h <= max_px_h) {
+        return img;
+    }
+    let dynimg = match img.fmt {
+        Fmt::Png => match image::load_from_memory(&img.bytes) {
+            Ok(d) => d,
+            Err(_) => return img,
+        },
+        Fmt::Rgba => match image::RgbaImage::from_raw(img.px_w, img.px_h, img.bytes.clone()) {
+            Some(buf) => image::DynamicImage::ImageRgba8(buf),
+            None => return img,
+        },
+    };
+    // resize fits the image within the box, preserving aspect ratio.
+    let resized = dynimg.resize(max_px_w, max_px_h, image::imageops::FilterType::Triangle);
+    let rgba = resized.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    ImageData {
+        px_w: w,
+        px_h: h,
+        fmt: Fmt::Rgba,
+        bytes: rgba.into_raw(),
+    }
+}
+
 /// `rows` is the FULL display height of the (uncropped) image in cells.
 /// `crop_rows = (skip_rows, show_rows)` selects a vertical slice of those rows.
 /// The kitty source rectangle (`y`,`h`) is in SOURCE-IMAGE pixels, so the slice

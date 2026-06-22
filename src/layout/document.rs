@@ -110,6 +110,11 @@ fn emit_blocks(
                     Some(data) => {
                         let cols = (cw as u16).min(term.cols);
                         let rows = term.image_rows(data.px_w, data.px_h, cols);
+                        // Downscale to display resolution so re-transmitting the
+                        // image each frame stays cheap (big photos otherwise lag).
+                        let max_w = cols as u32 * term.cell_px_w as u32;
+                        let max_h = rows as u32 * term.cell_px_h as u32;
+                        let data = image_kitty::fit(data, max_w, max_h);
                         out.push(Element::Image { data, cols, rows });
                     }
                     None => {
