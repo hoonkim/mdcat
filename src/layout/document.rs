@@ -33,8 +33,8 @@ pub fn build(blocks: &[Block], width: usize, term: &TermSize, hl: &Highlighter, 
     Doc { elements, total_rows }
 }
 
-/// Blank rows before a top-level H1 (extra separation above a major heading).
-const H1_LEADING_SPACING_ROWS: usize = 2;
+/// Blank rows before a top-level major heading (H1/H2) for extra separation.
+const MAJOR_HEADING_LEADING_SPACING_ROWS: usize = 2;
 /// Blank rows between any other pair of top-level blocks.
 const BLOCK_SPACING_ROWS: usize = 1;
 
@@ -128,10 +128,10 @@ fn emit_blocks(
                 }])]));
             }
         }
-        // Blank rows between top-level blocks: wider only before an H1.
+        // Blank rows between top-level blocks: wider only before a major heading.
         if indent == 0 && i + 1 < blocks.len() {
-            let gap = if matches!(blocks[i + 1], Block::Heading { level: 1, .. }) {
-                H1_LEADING_SPACING_ROWS
+            let gap = if matches!(blocks[i + 1], Block::Heading { level: 1 | 2, .. }) {
+                MAJOR_HEADING_LEADING_SPACING_ROWS
             } else {
                 BLOCK_SPACING_ROWS
             };
