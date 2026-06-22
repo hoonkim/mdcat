@@ -33,6 +33,9 @@ pub fn build(blocks: &[Block], width: usize, term: &TermSize, hl: &Highlighter, 
     Doc { elements, total_rows }
 }
 
+/// Number of blank rows inserted between top-level blocks.
+const BLOCK_SPACING_ROWS: usize = 2;
+
 fn blank() -> Element {
     Element::TextRows(vec![StyledLine::default()])
 }
@@ -123,9 +126,11 @@ fn emit_blocks(
                 }])]));
             }
         }
-        // Add blank row between top-level blocks
+        // Add blank rows between top-level blocks
         if indent == 0 && i + 1 < blocks.len() {
-            out.push(blank());
+            for _ in 0..BLOCK_SPACING_ROWS {
+                out.push(blank());
+            }
         }
     }
 }
