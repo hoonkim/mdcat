@@ -82,7 +82,7 @@ pub fn transmit_and_place(
     }
     if let Some((_, show)) = crop_rows {
         let crop_h_px = show as u32 * cell_px_h as u32;
-        ctrl.push_str(&format!(",y={},H={}", y_px, crop_h_px));
+        ctrl.push_str(&format!(",y={},h={}", y_px, crop_h_px));
     }
 
     // Split base64 payload into 4096-byte chunks with m=1 continuation, m=0 on last
@@ -135,5 +135,17 @@ mod tests {
         let img = ImageData { px_w: 1, px_h: 1, fmt: Fmt::Png, bytes: vec![1,2,3] };
         let out = transmit_and_place(&img, 1, 1, None, 16);
         assert!(out.contains("f=100"));
+    }
+
+    #[test]
+    fn transmit_with_crop_emits_lowercase_y_and_h() {
+        let img = ImageData { px_w: 4, px_h: 8, fmt: Fmt::Rgba, bytes: vec![0u8; 4*8*4] };
+        let out = transmit_and_place(&img, 2, 1, Some((1, 1)), 16);
+        // skip 1 row * 16px = 16
+        assert!(out.contains(",y=16"));
+        // crop height is 1 row * 16px = 16
+        assert!(out.contains(",h=16"));
+        // ensure uppercase H is NOT used
+        assert!(!out.contains(",H="));
     }
 }
