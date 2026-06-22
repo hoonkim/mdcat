@@ -28,7 +28,7 @@ impl Highlighter {
                 h.highlight_line(line, &self.ps).unwrap_or_default();
             let mut spans = Vec::new();
             for (syn, text) in ranges {
-                let text = text.trim_end_matches('\n').to_string();
+                let text = text.trim_end_matches(['\n', '\r']).to_string();
                 if text.is_empty() {
                     continue;
                 }

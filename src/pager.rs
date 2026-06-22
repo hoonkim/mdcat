@@ -13,6 +13,22 @@ pub fn clamp_scroll(scroll: isize, total_rows: usize, view_rows: usize) -> usize
     scroll.max(0).min(max as isize) as usize
 }
 
+/// Drop guard that restores the terminal on any exit path (normal, error, or panic).
+struct TermGuard;
+
+impl Drop for TermGuard {
+    fn drop(&mut self) {
+        let mut out = std::io::stdout();
+        let _ = execute!(
+            out,
+            event::DisableMouseCapture,
+            terminal::LeaveAlternateScreen,
+            crossterm::cursor::Show,
+        );
+        let _ = terminal::disable_raw_mode();
+    }
+}
+
 pub fn run(blocks: &[Block], base_dir: &Path) -> io::Result<()> {
     let hl = Highlighter::new();
     let mut stdout = io::stdout();
@@ -28,18 +44,9 @@ pub fn run(blocks: &[Block], base_dir: &Path) -> io::Result<()> {
         return Err(e);
     }
 
-    let result = run_loop(&mut stdout, blocks, base_dir, &hl);
-
-    // Always restore terminal, even on error
-    let _ = execute!(
-        stdout,
-        event::DisableMouseCapture,
-        terminal::LeaveAlternateScreen,
-        crossterm::cursor::Show,
-    );
-    let _ = terminal::disable_raw_mode();
-
-    result
+    // The guard's Drop handles ALL teardown — normal return, Err, and panic.
+    let _guard = TermGuard;
+    run_loop(&mut stdout, blocks, base_dir, &hl)
 }
 
 fn build_doc<'a>(

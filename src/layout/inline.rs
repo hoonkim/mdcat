@@ -1,7 +1,7 @@
 use crate::ir::Inline;
 use crate::style::{Span, Style, StyledLine, display_width};
 
-enum Tok { Word(String, Style), Space(Style), Soft, Hard }
+enum Tok { Word(String, Style), #[allow(dead_code)] Space(Style), Soft, Hard }
 
 fn flatten(inl: &[Inline], st: Style, out: &mut Vec<Tok>) {
     for node in inl {

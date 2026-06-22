@@ -43,8 +43,10 @@ pub fn line_to_ansi(line: &StyledLine) -> String {
 /// The visible area is `term.rows - 1` rows; the last row is a reversed
 /// status line showing scroll %.
 pub fn draw_viewport(out: &mut impl Write, doc: &Doc, scroll: usize, term: &TermSize) -> io::Result<()> {
-    // Clear screen + cursor home
+    // Clear screen + cursor home, then delete all kitty graphics placements
+    // so stale images don't ghost/smear when scrolling.
     write!(out, "\x1b[2J\x1b[H")?;
+    write!(out, "\x1b_Ga=d\x1b\\")?;
     let view_rows = term.rows.saturating_sub(1) as usize; // last row is status line
     let mut global_row = 0usize; // accumulated global row index
 
@@ -126,6 +128,7 @@ fn split_4096(text: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::style::{Color, Span, Style, StyledLine};
+    use crate::layout::document::{Doc, Element};
 
     #[test]
     fn sgr_bold_underline() {
@@ -149,5 +152,22 @@ mod tests {
         let s = Style { fg: Some(Color::Rgb(10, 20, 30)), ..Style::default() };
         let out = sgr(&s);
         assert!(out.contains("38;2;10;20;30"));
+    }
+
+    #[test]
+    fn draw_viewport_emits_kitty_graphics_delete() {
+        let line = StyledLine(vec![Span { text: "hello".into(), style: Style::default() }]);
+        let doc = Doc {
+            elements: vec![Element::TextRows(vec![line])],
+            total_rows: 1,
+        };
+        let term = TermSize { cols: 80, rows: 24, cell_px_w: 8, cell_px_h: 16 };
+        let mut buf = Vec::new();
+        draw_viewport(&mut buf, &doc, 0, &term).unwrap();
+        let output = String::from_utf8_lossy(&buf);
+        assert!(
+            output.contains("\x1b_Ga=d\x1b\\"),
+            "draw_viewport must emit kitty graphics-delete sequence at frame start"
+        );
     }
 }

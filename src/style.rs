@@ -1,7 +1,11 @@
 use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Color { Indexed(u8), Rgb(u8, u8, u8) }
+pub enum Color {
+    #[allow(dead_code)]
+    Indexed(u8),
+    Rgb(u8, u8, u8),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Style {
