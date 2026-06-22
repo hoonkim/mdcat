@@ -1,4 +1,5 @@
 mod cli;
+mod image_kitty;
 mod ir;
 mod layout;
 mod parser;
