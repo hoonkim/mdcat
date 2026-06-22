@@ -70,12 +70,19 @@ fn run_loop(
     let mut doc = build_doc(blocks, &t, hl, base_dir);
     let mut scroll: usize = 0;
 
-    loop {
-        let view_rows = (t.rows as usize).saturating_sub(1);
-        scroll = clamp_scroll(scroll as isize, doc.total_rows, view_rows);
-        draw_viewport(stdout, &doc, scroll, &t)?;
+    // Draw the first frame, then only redraw when the view actually changes.
+    // Mouse motion and no-op keys must NOT trigger a redraw (re-transmitting
+    // images every mouse move would flicker and lag).
+    scroll = clamp_scroll(scroll as isize, doc.total_rows, (t.rows as usize).saturating_sub(1));
+    draw_viewport(stdout, &doc, scroll, &t)?;
 
-        match event::read()? {
+    loop {
+        let ev = event::read()?;
+        let view_rows = (t.rows as usize).saturating_sub(1);
+        let prev_scroll = scroll;
+        let mut redraw = false;
+
+        match ev {
             Event::Key(KeyEvent { code, modifiers, .. }) => match (code, modifiers) {
                 (KeyCode::Char('q'), _) => break,
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
@@ -114,6 +121,7 @@ fn run_loop(
                 MouseEventKind::ScrollUp => {
                     scroll = clamp_scroll(scroll as isize - 3, doc.total_rows, view_rows);
                 }
+                // Movement, drags, clicks: ignore (no redraw).
                 _ => {}
             },
             Event::Resize(_, _) => {
@@ -124,8 +132,13 @@ fn run_loop(
                 // Scale scroll proportionally to new total, then clamp
                 scroll = (scroll.saturating_mul(doc.total_rows) / old_total)
                     .min(doc.total_rows.saturating_sub(new_view_rows));
+                redraw = true;
             }
             _ => {}
+        }
+
+        if scroll != prev_scroll || redraw {
+            draw_viewport(stdout, &doc, scroll, &t)?;
         }
     }
     Ok(())
