@@ -52,12 +52,16 @@ pub fn load(src: &str, base_dir: &Path) -> Option<ImageData> {
     })
 }
 
+/// `rows` is the FULL display height of the (uncropped) image in cells.
+/// `crop_rows = (skip_rows, show_rows)` selects a vertical slice of those rows.
+/// The kitty source rectangle (`y`,`h`) is in SOURCE-IMAGE pixels, so the slice
+/// is mapped from display rows back to source pixels via `img.px_h / rows`
+/// (using cell pixels here would be wrong whenever the image is scaled).
 pub fn transmit_and_place(
     img: &ImageData,
     cols: u16,
     rows: u16,
     crop_rows: Option<(u16, u16)>,
-    cell_px_h: u16,
 ) -> String {
     let b64 = base64::engine::general_purpose::STANDARD.encode(&img.bytes);
     let f = match img.fmt {
@@ -65,14 +69,9 @@ pub fn transmit_and_place(
         Fmt::Rgba => 32,
     };
 
-    // Vertical crop: crop_rows = (skip_rows, show_rows)
     let h_rows = match crop_rows {
         Some((_, show)) => show,
         None => rows,
-    };
-    let y_px = match crop_rows {
-        Some((skip, _)) => skip as u32 * cell_px_h as u32,
-        None => 0,
     };
 
     // Build control string
@@ -80,9 +79,11 @@ pub fn transmit_and_place(
     if img.fmt == Fmt::Rgba {
         ctrl.push_str(&format!(",s={},v={}", img.px_w, img.px_h));
     }
-    if let Some((_, show)) = crop_rows {
-        let crop_h_px = show as u32 * cell_px_h as u32;
-        ctrl.push_str(&format!(",y={},h={}", y_px, crop_h_px));
+    if let Some((skip, show)) = crop_rows {
+        let rows = rows.max(1) as u32;
+        let y_src = skip as u32 * img.px_h / rows;
+        let h_src = show as u32 * img.px_h / rows;
+        ctrl.push_str(&format!(",y={},h={}", y_src, h_src));
     }
 
     // Split base64 payload into 4096-byte chunks with m=1 continuation, m=0 on last
@@ -120,7 +121,7 @@ mod tests {
     #[test]
     fn transmit_emits_graphics_escape() {
         let img = ImageData { px_w: 4, px_h: 4, fmt: Fmt::Rgba, bytes: vec![0u8; 4*4*4] };
-        let out = transmit_and_place(&img, 2, 1, None, 16);
+        let out = transmit_and_place(&img, 2, 1, None);
         // kitty 그래픽: ESC _ G ... ESC \
         assert!(out.contains("\x1b_G"));
         assert!(out.contains("\x1b\\"));
@@ -133,19 +134,21 @@ mod tests {
     #[test]
     fn png_uses_format_100() {
         let img = ImageData { px_w: 1, px_h: 1, fmt: Fmt::Png, bytes: vec![1,2,3] };
-        let out = transmit_and_place(&img, 1, 1, None, 16);
+        let out = transmit_and_place(&img, 1, 1, None);
         assert!(out.contains("f=100"));
     }
 
     #[test]
-    fn transmit_with_crop_emits_lowercase_y_and_h() {
-        let img = ImageData { px_w: 4, px_h: 8, fmt: Fmt::Rgba, bytes: vec![0u8; 4*8*4] };
-        let out = transmit_and_place(&img, 2, 1, Some((1, 1)), 16);
-        // skip 1 row * 16px = 16
-        assert!(out.contains(",y=16"));
-        // crop height is 1 row * 16px = 16
-        assert!(out.contains(",h=16"));
-        // ensure uppercase H is NOT used
+    fn transmit_with_crop_maps_rows_to_source_pixels() {
+        // Image is 80px tall displayed in 10 full rows -> 8 source px per row.
+        let img = ImageData { px_w: 40, px_h: 80, fmt: Fmt::Rgba, bytes: vec![0u8; 40*80*4] };
+        // Show rows [2, 5): skip 2, show 3 -> source y=16, h=24.
+        let out = transmit_and_place(&img, 4, 10, Some((2, 3)));
+        assert!(out.contains(",y=16"), "got {out}");
+        assert!(out.contains(",h=24"), "got {out}");
+        assert!(out.contains("r=3")); // display only the 3 visible rows
+        // lowercase crop keys only
         assert!(!out.contains(",H="));
+        assert!(!out.contains(",Y="));
     }
 }

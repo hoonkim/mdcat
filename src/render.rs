@@ -103,7 +103,7 @@ pub fn draw_viewport(out: &mut impl Write, doc: &Doc, scroll: usize, term: &Term
                 let srow = visible_top - vstart;
                 write!(out, "\x1b[{};{}H", srow + 1, CONTENT_COL)?;
                 let crop = if skip == 0 && show == *rows { None } else { Some((skip, show)) };
-                let esc = transmit_and_place(data, *cols, *rows, crop, term.cell_px_h);
+                let esc = transmit_and_place(data, *cols, *rows, crop);
                 write!(out, "{}", esc)?;
             }
         }
