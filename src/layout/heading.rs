@@ -1,8 +1,9 @@
 /// Heading scale for kitty OSC 66 text-sizing.
 ///
-/// Kitty interprets fractional scale as `s` whole-unit plus `n/d` fractional
-/// component when both `n` and `d` are non-zero.  When only `s` is set the
-/// size is exactly `s` times normal.
+/// When both `n` and `d` are non-zero, the effective factor is `n/d` (the `s`
+/// component is ignored by the effective_factor calculation).  When only `s`
+/// is set the effective size is exactly `s` times normal.
+/// Note: The exact visual sizing on kitty is to be reconciled in Task 12.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scale {
     pub s: u8,
@@ -31,11 +32,13 @@ pub fn scale_for(level: u8) -> Scale {
 /// Return the effective linear scale factor for wrap-width / line-height math.
 ///
 /// When the scale has a fractional component (`n > 0 && d > 0`), the factor
-/// is `n as f32 / d as f32`.  Otherwise it is `s as f32`.
+/// is `n as f32 / d as f32` (the `s` component is ignored).  Otherwise the
+/// factor is `s as f32`.
 ///
-/// This formula is chosen because the five required tests all pass with it:
+/// This formula is chosen because the required tests all pass with it:
 ///   H1 (s=2)         → 2.0
 ///   H2 (s=1,n=3,d=2) → 1.5
+///   H3 (s=1,n=5,d=4) → 1.25
 ///   H4 (s=1)         → 1.0
 pub fn effective_factor(sc: &Scale) -> f32 {
     if sc.n > 0 && sc.d > 0 {
@@ -76,8 +79,16 @@ mod tests {
     #[test]
     fn h2_is_three_halves() {
         let sc = scale_for(2);
+        assert_eq!(sc.s, 1);
         assert_eq!((sc.n, sc.d), (3, 2));
         assert!((effective_factor(&sc) - 1.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn h3_is_five_quarters() {
+        let sc = scale_for(3);
+        assert_eq!((sc.s, sc.n, sc.d), (1, 5, 4));
+        assert!(!sc.bold);
     }
 
     #[test]
