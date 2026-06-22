@@ -2,6 +2,7 @@ mod cli;
 mod image_kitty;
 mod ir;
 mod layout;
+mod pager;
 mod parser;
 mod render;
 mod style;
