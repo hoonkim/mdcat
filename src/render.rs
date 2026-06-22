@@ -51,6 +51,9 @@ pub fn line_to_ansi(line: &StyledLine) -> String {
 /// The visible area is `term.rows - 1` rows; the last row is a reversed
 /// status line showing scroll %.
 pub fn draw_viewport(out: &mut impl Write, doc: &Doc, scroll: usize, term: &TermSize) -> io::Result<()> {
+    // Begin a synchronized update so the whole frame is swapped atomically —
+    // the terminal won't show the clear-then-redraw in between, killing flicker.
+    write!(out, "\x1b[?2026h")?;
     // Clear screen + cursor home, then delete all kitty graphics placements
     // so stale images don't ghost/smear when scrolling.
     write!(out, "\x1b[2J\x1b[H")?;
@@ -117,6 +120,8 @@ pub fn draw_viewport(out: &mut impl Write, doc: &Doc, scroll: usize, term: &Term
     };
     write!(out, "\x1b[{};1H", term.rows)?;
     write!(out, "\x1b[7m {}% (q: quit) \x1b[0m", pct.min(100))?;
+    // End the synchronized update: present the whole frame at once.
+    write!(out, "\x1b[?2026l")?;
     out.flush()
 }
 
