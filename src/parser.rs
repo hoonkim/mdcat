@@ -24,7 +24,16 @@ enum Frame {
     Paragraph(Vec<Inline>),
     Heading { level: u8, inl: Vec<Inline> },
     BlockQuote(Vec<Block>),
-    List { ordered: bool, start: u64, items: Vec<Vec<Block>>, cur: Vec<Block> },
+    List {
+        ordered: bool,
+        start: u64,
+        items: Vec<Vec<Block>>,
+        cur: Vec<Block>,
+        // Inline content that arrives directly under an Item (tight lists, where
+        // pulldown-cmark omits the Paragraph wrapper). Flushed into `cur` as a
+        // Paragraph when a block is added or the item ends.
+        pending: Vec<Inline>,
+    },
     Item,
     Code { lang: Option<String>, text: String },
     Table {
@@ -69,6 +78,7 @@ impl Builder {
                 start: start.unwrap_or(1),
                 items: vec![],
                 cur: vec![],
+                pending: vec![],
             }),
             Tag::Item => self.stack.push(Frame::Item),
             Tag::CodeBlock(kind) => {
@@ -124,12 +134,20 @@ impl Builder {
             Frame::Paragraph(inl) => self.push_block(Block::Paragraph(inl)),
             Frame::Heading { level, inl } => self.push_block(Block::Heading { level, inlines: inl }),
             Frame::BlockQuote(blocks) => self.push_block(Block::BlockQuote(blocks)),
-            Frame::List { ordered, start, mut items, cur } => {
+            Frame::List { ordered, start, mut items, mut cur, mut pending } => {
+                // pending is normally empty here (flushed at End(Item)); guard anyway.
+                if !pending.is_empty() {
+                    cur.push(Block::Paragraph(std::mem::take(&mut pending)));
+                }
                 if !cur.is_empty() { items.push(cur); }
                 self.push_block(Block::List { ordered, start, items });
             }
             Frame::Item => {
-                if let Some(Frame::List { items, cur, .. }) = self.stack.last_mut() {
+                if let Some(Frame::List { items, cur, pending, .. }) = self.stack.last_mut() {
+                    // tight-list item text: flush the pending inline buffer as a paragraph
+                    if !pending.is_empty() {
+                        cur.push(Block::Paragraph(std::mem::take(pending)));
+                    }
                     items.push(std::mem::take(cur));
                 }
             }
@@ -162,6 +180,17 @@ impl Builder {
     }
 
     fn push_inline(&mut self, node: Inline) {
+        // Tight-list item content arrives directly under an Item frame with no
+        // Paragraph wrapper; route it to the enclosing List's pending buffer.
+        let n = self.stack.len();
+        if n >= 1 && matches!(self.stack[n - 1], Frame::Item) {
+            if n >= 2 {
+                if let Frame::List { pending, .. } = &mut self.stack[n - 2] {
+                    pending.push(node);
+                }
+            }
+            return;
+        }
         match self.stack.last_mut() {
             Some(Frame::Paragraph(inl))
             | Some(Frame::Heading { inl, .. })
@@ -180,11 +209,21 @@ impl Builder {
     fn push_block(&mut self, block: Block) {
         match self.stack.last_mut() {
             Some(Frame::BlockQuote(blocks)) => blocks.push(block),
-            Some(Frame::List { cur, .. }) => cur.push(block),
+            Some(Frame::List { cur, pending, .. }) => {
+                if !pending.is_empty() {
+                    cur.push(Block::Paragraph(std::mem::take(pending)));
+                }
+                cur.push(block);
+            }
             Some(Frame::Item) => {
                 let n = self.stack.len();
                 if n >= 2 {
-                    if let Frame::List { cur, .. } = &mut self.stack[n - 2] {
+                    if let Frame::List { cur, pending, .. } = &mut self.stack[n - 2] {
+                        // flush any pending inline text before the block so order
+                        // is preserved (e.g. item text, then a nested sub-list)
+                        if !pending.is_empty() {
+                            cur.push(Block::Paragraph(std::mem::take(pending)));
+                        }
                         cur.push(block);
                         return;
                     }
@@ -252,5 +291,71 @@ mod tests {
     fn parses_fenced_code_with_lang() {
         let blocks = parse("```rust\nfn main() {}\n```");
         assert_eq!(blocks[0], Block::CodeBlock { lang: Some("rust".into()), code: "fn main() {}\n".into() });
+    }
+
+    #[test]
+    fn parses_tight_bullet_list() {
+        // tight list: no blank lines between items -> pulldown omits Paragraph wrappers
+        let blocks = parse("- first\n- second");
+        match &blocks[0] {
+            Block::List { ordered, items, .. } => {
+                assert!(!ordered);
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0], vec![Block::Paragraph(vec![Inline::Text("first".into())])]);
+                assert_eq!(items[1], vec![Block::Paragraph(vec![Inline::Text("second".into())])]);
+            }
+            other => panic!("expected list, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_tight_ordered_list_with_start() {
+        let blocks = parse("3. a\n4. b");
+        match &blocks[0] {
+            Block::List { ordered, start, items } => {
+                assert!(ordered);
+                assert_eq!(*start, 3);
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0], vec![Block::Paragraph(vec![Inline::Text("a".into())])]);
+            }
+            other => panic!("expected list, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_nested_tight_list_keeps_order() {
+        let blocks = parse("- outer\n  - inner");
+        match &blocks[0] {
+            Block::List { items, .. } => {
+                assert_eq!(items.len(), 1);
+                let item = &items[0];
+                // item text comes first, then the nested sub-list
+                assert_eq!(item[0], Block::Paragraph(vec![Inline::Text("outer".into())]));
+                assert!(matches!(&item[1], Block::List { .. }));
+            }
+            other => panic!("expected list, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_task_list_markers() {
+        let blocks = parse("- [x] done\n- [ ] todo");
+        match &blocks[0] {
+            Block::List { items, .. } => {
+                assert_eq!(items.len(), 2);
+                // marker is rendered into the leading text
+                if let Block::Paragraph(inl) = &items[0][0] {
+                    let text: String = inl.iter().map(|i| match i {
+                        Inline::Text(t) => t.clone(),
+                        _ => String::new(),
+                    }).collect();
+                    assert!(text.contains("[x]"), "got {text:?}");
+                    assert!(text.contains("done"), "got {text:?}");
+                } else {
+                    panic!("expected paragraph in task item");
+                }
+            }
+            other => panic!("expected list, got {other:?}"),
+        }
     }
 }
