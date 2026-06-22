@@ -197,9 +197,9 @@ mod tests {
         let blocks = vec![Block::Heading { level: 1, inlines: vec![Inline::Text("Hi".into())] }];
         let hl = Highlighter::new();
         let doc = build(&blocks, 76, &term(), &hl, Path::new("."));
-        // H1 = scale 2 → 한 줄 제목이 2행
+        // H1 = scale 3 → 한 줄 제목이 3행
         if let Element::Heading { height, .. } = &doc.elements[0] {
-            assert_eq!(*height, 2);
+            assert_eq!(*height, 3);
         } else { panic!("expected heading"); }
     }
 

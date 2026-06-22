@@ -1,9 +1,9 @@
 /// Heading scale for kitty OSC 66 text-sizing.
 ///
-/// When both `n` and `d` are non-zero, the effective factor is `n/d` (the `s`
-/// component is ignored by the effective_factor calculation).  When only `s`
-/// is set the effective size is exactly `s` times normal.
-/// Note: The exact visual sizing on kitty is to be reconciled in Task 12.
+/// `s` is the integer cell-scale (1–7); a glyph occupies `s`×`s` cells.
+/// `n`/`d` are an optional fractional scale the protocol supports, but this
+/// kitty build only reliably renders the integer `s` (fractional scales were
+/// observed to collapse to `s`), so headings use distinct integer scales.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scale {
     pub s: u8,
@@ -14,37 +14,28 @@ pub struct Scale {
 
 /// Map a Markdown heading level (1–6) to a kitty text-size Scale.
 ///
-/// | level | s | n | d | bold  | effective factor |
-/// |-------|---|---|---|-------|-----------------|
-/// | 1     | 2 | 0 | 0 | false | 2.0             |
-/// | 2     | 2 | 3 | 2 | false | 1.5             |
-/// | 3     | 2 | 5 | 4 | false | 1.25            |
-/// | 4–6   | 1 | 0 | 0 | true  | 1.0             |
+/// Integer scales only, so the levels are visibly distinct on terminals that
+/// ignore fractional text sizing:
 ///
-/// kitty requires the fractional scale `n/d` to be <= the reserved cell count
-/// `s`; otherwise it ignores the fraction and renders at 1x. So H2/H3 use
-/// `s=2` (a 2-cell-tall block) with the fraction applied inside it. `s` is the
-/// ceiling of the effective factor.
+/// | level | s | bold  | size      |
+/// |-------|---|-------|-----------|
+/// | 1     | 3 | false | 3×        |
+/// | 2     | 2 | false | 2×        |
+/// | 3–6   | 1 | true  | bold (1×) |
 pub fn scale_for(level: u8) -> Scale {
     match level {
-        1 => Scale { s: 2, n: 0, d: 0, bold: false },
-        2 => Scale { s: 2, n: 3, d: 2, bold: false },
-        3 => Scale { s: 2, n: 5, d: 4, bold: false },
+        1 => Scale { s: 3, n: 0, d: 0, bold: false },
+        2 => Scale { s: 2, n: 0, d: 0, bold: false },
+        // H3–H6: body size, bold (no integer scale between 1 and 2 exists).
         _ => Scale { s: 1, n: 0, d: 0, bold: true },
     }
 }
 
 /// Return the effective linear scale factor for wrap-width / line-height math.
 ///
-/// When the scale has a fractional component (`n > 0 && d > 0`), the factor
-/// is `n as f32 / d as f32` (the `s` component is ignored).  Otherwise the
-/// factor is `s as f32`.
-///
-/// This formula is chosen because the required tests all pass with it:
-///   H1 (s=2)         → 2.0
-///   H2 (s=1,n=3,d=2) → 1.5
-///   H3 (s=1,n=5,d=4) → 1.25
-///   H4 (s=1)         → 1.0
+/// When the scale has a fractional component (`n > 0 && d > 0`), the factor is
+/// `n/d`; otherwise it is `s`. Headings currently use integer `s` only, so this
+/// returns `s` for them, but the fractional path is kept for completeness.
 pub fn effective_factor(sc: &Scale) -> f32 {
     if sc.n > 0 && sc.d > 0 {
         sc.n as f32 / sc.d as f32
@@ -57,7 +48,7 @@ pub fn effective_factor(sc: &Scale) -> f32 {
 ///
 /// Format: `ESC ] 66 ; <meta> ; <text> ESC \`
 ///
-/// The meta string uses colon-separated key=value pairs.  When the scale is
+/// The meta string uses colon-separated key=value pairs. When the scale is
 /// fractional the keys `n` and `d` are appended after `s`.
 ///
 /// The caller is responsible for splitting `text` so that each call stays
@@ -75,26 +66,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn h1_is_scale_2() {
+    fn h1_is_scale_3() {
         let sc = scale_for(1);
+        assert_eq!((sc.s, sc.n, sc.d), (3, 0, 0));
+        assert!(!sc.bold);
+        assert!((effective_factor(&sc) - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn h2_is_scale_2() {
+        let sc = scale_for(2);
         assert_eq!((sc.s, sc.n, sc.d), (2, 0, 0));
+        assert!(!sc.bold);
         assert!((effective_factor(&sc) - 2.0).abs() < 1e-6);
     }
 
     #[test]
-    fn h2_is_three_halves() {
-        let sc = scale_for(2);
-        // s must be >= the fraction (2 >= 1.5) so kitty honors the fractional scale.
-        assert_eq!(sc.s, 2);
-        assert_eq!((sc.n, sc.d), (3, 2));
-        assert!((effective_factor(&sc) - 1.5).abs() < 1e-6);
-    }
-
-    #[test]
-    fn h3_is_five_quarters() {
+    fn h3_is_bold_body_size() {
         let sc = scale_for(3);
-        assert_eq!((sc.s, sc.n, sc.d), (2, 5, 4));
-        assert!(!sc.bold);
+        assert_eq!(sc.s, 1);
+        assert!(sc.bold);
+        assert!((effective_factor(&sc) - 1.0).abs() < 1e-6);
     }
 
     #[test]
@@ -106,16 +98,17 @@ mod tests {
     }
 
     #[test]
-    fn osc66_encodes_scale_and_text() {
+    fn osc66_encodes_integer_scale() {
         let sc = scale_for(1);
         let out = osc66("Hi", &sc);
-        assert_eq!(out, "\x1b]66;s=2;Hi\x1b\\");
+        assert_eq!(out, "\x1b]66;s=3;Hi\x1b\\");
     }
 
     #[test]
-    fn osc66_fractional() {
-        let sc = scale_for(2);
+    fn osc66_encodes_fractional_when_present() {
+        // osc66 still supports fractional encoding even though headings don't use it.
+        let sc = Scale { s: 1, n: 3, d: 2, bold: false };
         let out = osc66("Hi", &sc);
-        assert_eq!(out, "\x1b]66;s=2:n=3:d=2;Hi\x1b\\");
+        assert_eq!(out, "\x1b]66;s=1:n=3:d=2;Hi\x1b\\");
     }
 }
