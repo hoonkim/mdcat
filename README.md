@@ -27,10 +27,28 @@ text can't do:
   protocols; other terminals are not supported)
 - Rust toolchain (to build)
 
-## Build
+## Install
+
+### Homebrew (macOS)
+
+```bash
+brew install hoonkim/tap/mdcat
+```
+
+If the Rust toolchain isn't present, Homebrew installs it automatically as a
+build dependency.
+
+### From source
 
 ```bash
 cargo build --release
+# binary at target/release/mdcat
+```
+
+Or install it onto your `PATH` with Cargo:
+
+```bash
+cargo install --path .
 ```
 
 ## Usage
@@ -42,7 +60,7 @@ mdcat <file.md>
 For example:
 
 ```bash
-./target/release/mdcat samples/showcase.md
+mdcat samples/showcase.md
 ```
 
 ### Controls
