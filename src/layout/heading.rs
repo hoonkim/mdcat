@@ -17,14 +17,19 @@ pub struct Scale {
 /// | level | s | n | d | bold  | effective factor |
 /// |-------|---|---|---|-------|-----------------|
 /// | 1     | 2 | 0 | 0 | false | 2.0             |
-/// | 2     | 1 | 3 | 2 | false | 1.5             |
-/// | 3     | 1 | 5 | 4 | false | 1.25            |
+/// | 2     | 2 | 3 | 2 | false | 1.5             |
+/// | 3     | 2 | 5 | 4 | false | 1.25            |
 /// | 4–6   | 1 | 0 | 0 | true  | 1.0             |
+///
+/// kitty requires the fractional scale `n/d` to be <= the reserved cell count
+/// `s`; otherwise it ignores the fraction and renders at 1x. So H2/H3 use
+/// `s=2` (a 2-cell-tall block) with the fraction applied inside it. `s` is the
+/// ceiling of the effective factor.
 pub fn scale_for(level: u8) -> Scale {
     match level {
         1 => Scale { s: 2, n: 0, d: 0, bold: false },
-        2 => Scale { s: 1, n: 3, d: 2, bold: false },
-        3 => Scale { s: 1, n: 5, d: 4, bold: false },
+        2 => Scale { s: 2, n: 3, d: 2, bold: false },
+        3 => Scale { s: 2, n: 5, d: 4, bold: false },
         _ => Scale { s: 1, n: 0, d: 0, bold: true },
     }
 }
@@ -79,7 +84,8 @@ mod tests {
     #[test]
     fn h2_is_three_halves() {
         let sc = scale_for(2);
-        assert_eq!(sc.s, 1);
+        // s must be >= the fraction (2 >= 1.5) so kitty honors the fractional scale.
+        assert_eq!(sc.s, 2);
         assert_eq!((sc.n, sc.d), (3, 2));
         assert!((effective_factor(&sc) - 1.5).abs() < 1e-6);
     }
@@ -87,7 +93,7 @@ mod tests {
     #[test]
     fn h3_is_five_quarters() {
         let sc = scale_for(3);
-        assert_eq!((sc.s, sc.n, sc.d), (1, 5, 4));
+        assert_eq!((sc.s, sc.n, sc.d), (2, 5, 4));
         assert!(!sc.bold);
     }
 
@@ -110,6 +116,6 @@ mod tests {
     fn osc66_fractional() {
         let sc = scale_for(2);
         let out = osc66("Hi", &sc);
-        assert_eq!(out, "\x1b]66;s=1:n=3:d=2;Hi\x1b\\");
+        assert_eq!(out, "\x1b]66;s=2:n=3:d=2;Hi\x1b\\");
     }
 }
