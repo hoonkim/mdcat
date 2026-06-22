@@ -18,44 +18,41 @@ impl TermSize {
     }
 }
 
-#[repr(C)]
-struct Winsize {
-    ws_row: u16,
-    ws_col: u16,
-    ws_xpixel: u16,
-    ws_ypixel: u16,
-}
-
+/// Query the terminal geometry via crossterm.
+///
+/// Uses `window_size()` which reports both cell counts and pixel dimensions
+/// (needed for image sizing). Falls back to `size()` (cells only) and finally
+/// to a sane 80x24 default. We deliberately avoid a raw `ioctl` here: declaring
+/// the variadic C `ioctl` with a fixed signature segfaults on AArch64 (the
+/// variadic ABI passes the arg on the stack, not in a register).
 pub fn query() -> TermSize {
-    #[cfg(unix)]
-    unsafe {
-        let mut ws = Winsize {
-            ws_row: 0,
-            ws_col: 0,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
-        };
-
-        #[cfg(target_os = "macos")]
-        const TIOCGWINSZ: u64 = 0x40087468;
-        #[cfg(target_os = "linux")]
-        const TIOCGWINSZ: u64 = 0x5413;
-
-        extern "C" {
-            fn ioctl(fd: i32, request: u64, arg: *mut Winsize) -> i32;
-        }
-
-        let r = ioctl(1, TIOCGWINSZ, &mut ws as *mut Winsize);
-        if r == 0 && ws.ws_col > 0 {
-            let cols = ws.ws_col;
-            let rows = ws.ws_row;
-            let cell_px_w = if ws.ws_xpixel > 0 { ws.ws_xpixel / cols } else { 8 };
-            let cell_px_h = if ws.ws_ypixel > 0 { ws.ws_ypixel / rows.max(1) } else { 16 };
+    // Preferred: window_size gives pixel dimensions, so we can derive cell px.
+    if let Ok(ws) = crossterm::terminal::window_size() {
+        if ws.columns > 0 {
+            let cols = ws.columns;
+            let rows = ws.rows;
+            let cell_px_w = if ws.width > 0 { ws.width / cols } else { 8 };
+            let cell_px_h = if ws.height > 0 {
+                ws.height / rows.max(1)
+            } else {
+                16
+            };
             return TermSize {
                 cols,
                 rows,
                 cell_px_w,
                 cell_px_h,
+            };
+        }
+    }
+    // Fallback: cell counts only (no pixel info), assume typical cell size.
+    if let Ok((cols, rows)) = crossterm::terminal::size() {
+        if cols > 0 {
+            return TermSize {
+                cols,
+                rows,
+                cell_px_w: 8,
+                cell_px_h: 16,
             };
         }
     }
