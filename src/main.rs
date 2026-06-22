@@ -1,6 +1,8 @@
 mod cli;
 mod ir;
+mod layout;
 mod parser;
+mod style;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
