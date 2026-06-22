@@ -18,12 +18,15 @@ pub fn run(blocks: &[Block], base_dir: &Path) -> io::Result<()> {
     let mut stdout = io::stdout();
 
     terminal::enable_raw_mode()?;
-    execute!(
+    if let Err(e) = execute!(
         stdout,
         terminal::EnterAlternateScreen,
         event::EnableMouseCapture,
         crossterm::cursor::Hide,
-    )?;
+    ) {
+        let _ = terminal::disable_raw_mode();
+        return Err(e);
+    }
 
     let result = run_loop(&mut stdout, blocks, base_dir, &hl);
 
@@ -111,7 +114,7 @@ fn run_loop(
                 doc = build_doc(blocks, &t, hl, base_dir);
                 let new_view_rows = (t.rows as usize).saturating_sub(1);
                 // Scale scroll proportionally to new total, then clamp
-                scroll = (scroll * doc.total_rows / old_total)
+                scroll = (scroll.saturating_mul(doc.total_rows) / old_total)
                     .min(doc.total_rows.saturating_sub(new_view_rows));
             }
             _ => {}
