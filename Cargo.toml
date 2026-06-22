@@ -2,6 +2,10 @@
 name = "mdcat"
 version = "0.1.0"
 edition = "2021"
+description = "A terminal Markdown viewer for kitty (OSC 66 text sizing + graphics protocol)"
+license = "MIT"
+repository = "https://github.com/hoonkim/mdcat"
+readme = "README.md"
 
 [[bin]]
 name = "mdcat"
