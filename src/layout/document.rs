@@ -33,8 +33,10 @@ pub fn build(blocks: &[Block], width: usize, term: &TermSize, hl: &Highlighter, 
     Doc { elements, total_rows }
 }
 
-/// Number of blank rows inserted between top-level blocks.
-const BLOCK_SPACING_ROWS: usize = 2;
+/// Blank rows between two consecutive top-level paragraphs.
+const PARAGRAPH_SPACING_ROWS: usize = 2;
+/// Blank rows between any other pair of top-level blocks (e.g. heading↔body).
+const BLOCK_SPACING_ROWS: usize = 1;
 
 fn blank() -> Element {
     Element::TextRows(vec![StyledLine::default()])
@@ -126,9 +128,16 @@ fn emit_blocks(
                 }])]));
             }
         }
-        // Add blank rows between top-level blocks
+        // Blank rows between top-level blocks: wider only between two paragraphs.
         if indent == 0 && i + 1 < blocks.len() {
-            for _ in 0..BLOCK_SPACING_ROWS {
+            let gap = if matches!(block, Block::Paragraph(_))
+                && matches!(blocks[i + 1], Block::Paragraph(_))
+            {
+                PARAGRAPH_SPACING_ROWS
+            } else {
+                BLOCK_SPACING_ROWS
+            };
+            for _ in 0..gap {
                 out.push(blank());
             }
         }
